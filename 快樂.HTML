@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>快樂九成帥一成team 場地管理</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f0f8ff;
+    margin: 0;
+    padding: 0;
+  }
+  h1 { text-align:center; color: #333; }
+  .container { display: flex; flex-direction: column; gap: 10px; padding: 10px; }
+  .court, .prep, .rest {
+    border: 2px solid #87ceeb;
+    border-radius: 8px;
+    padding: 10px;
+    background: #fff;
+  }
+  .court h2, .prep h2, .rest h2 { margin-top:0; }
+  .players { display: flex; flex-wrap: wrap; gap: 5px; min-height: 40px; }
+  .player {
+    padding: 6px 10px;
+    background: #87cefa;
+    border-radius: 4px;
+    cursor: grab;
+    user-select: none;
+  }
+  button {
+    padding: 12px 20px;
+    font-size: 16px;
+    margin-top: 5px;
+    width: 100%;
+    touch-action: manipulation;
+    cursor: pointer;
+    border: none;
+    background: #4682b4;
+    color: white;
+    border-radius: 5px;
+  }
+  button:hover { background: #5a9bd4; }
+  .dragging {
+    opacity: 0.5;
+    position: absolute;
+    z-index: 1000;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<h1>快樂九成帥一成team 場地管理</h1>
+
+<div class="container">
+
+  <div class="court" id="court1">
+    <h2>場地1</h2>
+    <div class="players" id="court1Players"></div>
+    <button data-court="court1" class="endMatchBtn">結束比賽</button>
+  </div>
+
+  <div class="court" id="court2">
+    <h2>場地2</h2>
+    <div class="players" id="court2Players"></div>
+    <button data-court="court2" class="endMatchBtn">結束比賽</button>
+  </div>
+
+  <div class="prep" id="prep1">
+    <h2>預備區1 (最多4人)</h2>
+    <div class="players" id="prep1Players"></div>
+  </div>
+
+  <div class="prep" id="prep2">
+    <h2>預備區2 (最多4人)</h2>
+    <div class="players" id="prep2Players"></div>
+  </div>
+
+  <div class="rest" id="rest">
+    <h2>休息區</h2>
+    <div class="players" id="restPlayers"></div>
+  </div>
+
+  <button id="addPlayerBtn">新增球員</button>
+</div>
+
+<script>
+  let court1 = [];
+  let court2 = [];
+  let prep1 = [];
+  let prep2 = [];
+  let rest = [];
+
+  let dragSrc = null; // 電腦拖曳來源
+  let touchClone = null; // 平板用克隆
+  let currentTouchPlayer = null;
+
+  function render() {
+    const renderArea = (arr, containerId) => {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      arr.forEach((p, idx) => {
+        const div = document.createElement('div');
+        div.className = 'player';
+        div.textContent = p;
+        div.setAttribute("draggable", "true");
+
+        // 電腦用 drag
+        div.addEventListener('dragstart', (e) => {
+          dragSrc = {name: p, from: containerId, index: idx};
+          e.dataTransfer.effectAllowed = "move";
+        });
+
+        // 平板用 touch
+        div.addEventListener('touchstart', (e) => {
+          currentTouchPlayer = {name: p, from: containerId, index: idx};
+          touchClone = div.cloneNode(true);
+          touchClone.classList.add('dragging');
+          document.body.appendChild(touchClone);
+        }, {passive:false});
+
+        div.addEventListener('touchmove', (e) => {
+          if(touchClone){
+            let touch = e.touches[0];
+            touchClone.style.left = touch.pageX - 30 + "px";
+            touchClone.style.top = touch.pageY - 30 + "px";
+          }
+        }, {passive:false});
+
+        div.addEventListener('touchend', (e) => {
+          if(touchClone){
+            let dropTarget = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+            let dropArea = dropTarget.closest('.players');
+            if(dropArea){
+              movePlayer(currentTouchPlayer, dropArea.id);
+            }
+            document.body.removeChild(touchClone);
+            touchClone = null;
+            currentTouchPlayer = null;
+          }
+        });
+
+        container.appendChild(div);
+      });
+    }
+    renderArea(court1, 'court1Players');
+    renderArea(court2, 'court2Players');
+    renderArea(prep1, 'prep1Players');
+    renderArea(prep2, 'prep2Players');
+    renderArea(rest, 'restPlayers');
+  }
+
+  function movePlayer(playerObj, toId){
+    if(!playerObj) return;
+    let fromArr = getArray(playerObj.from);
+    let toArr = getArray(toId);
+    if(!fromArr || !toArr) return;
+
+    let [moved] = fromArr.splice(playerObj.index, 1);
+    if(toId.includes("prep1") && toArr.length >= 4) return;
+    if(toId.includes("prep2") && toArr.length >= 4) return;
+
+    toArr.push(moved);
+    render();
+  }
+
+  function getArray(containerId){
+    switch(containerId){
+      case 'court1Players': return court1;
+      case 'court2Players': return court2;
+      case 'prep1Players': return prep1;
+      case 'prep2Players': return prep2;
+      case 'restPlayers': return rest;
+    }
+    return null;
+  }
+
+  function endMatch(court) {
+    let currentCourt = court === 'court1' ? court1 : court2;
+    rest.push(...currentCourt);
+    currentCourt.length = 0;
+
+    let targetCourt = court === 'court1' ? court1 : court2;
+    while(targetCourt.length < 4 && prep1.length > 0){
+      targetCourt.push(prep1.shift());
+    }
+
+    if(prep1.length === 0 && prep2.length > 0){
+      while(prep1.length < 4 && prep2.length > 0){
+        prep1.push(prep2.shift());
+      }
+    }
+    render();
+  }
+
+  document.querySelectorAll('.endMatchBtn').forEach(btn=>{
+    btn.addEventListener('click',()=>endMatch(btn.dataset.court));
+    btn.addEventListener('touchstart',()=>endMatch(btn.dataset.court));
+  });
+
+  document.getElementById('addPlayerBtn').addEventListener('click',()=>{
+    let name = prompt('輸入球員名稱');
+    if(name){
+      rest.push(name);
+      render();
+    }
+  });
+
+  // 電腦 drop 設定
+  document.querySelectorAll('.players').forEach(area=>{
+    area.addEventListener('dragover',(e)=>e.preventDefault());
+    area.addEventListener('drop',(e)=>{
+      e.preventDefault();
+      if(dragSrc){
+        movePlayer(dragSrc, area.id);
+        dragSrc = null;
+      }
+    });
+  });
+
+  render();
+</script>
+
+</body>
+</html>
